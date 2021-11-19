@@ -1,0 +1,16 @@
+{
+  "domain": "amplipi",
+  "name": "AmpliPi",
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/amplipi",
+  "requirements": ["zeroconf==0.36.8","git+https://github.com/brianhealey/pyamplipi.git@inital_api#pyamplipy"],
+  "ssdp": [],
+  "zeroconf": [{ "type": "_http._tcp.local.", "name": "amplipi-api._http._tcp.local."}],
+  "homekit": {},
+  "dependencies": [],
+  "codeowners": [
+    "@gabehealey"
+  ],
+  "iot_class": "local_polling",
+  "version": "1.0"
+}
