@@ -9,7 +9,7 @@ from homeassistant.components.media_player import MediaPlayerEntity, BrowseMedia
     SUPPORT_BROWSE_MEDIA, SUPPORT_REPEAT_SET, SUPPORT_GROUPING, MEDIA_CLASS_DIRECTORY
 from homeassistant.components.media_player.const import MEDIA_CLASS_MUSIC
 from homeassistant.const import CONF_NAME, STATE_OFF, STATE_ON, STATE_PLAYING, \
-    STATE_PAUSED, STATE_IDLE, STATE_STANDBY
+    STATE_PAUSED, STATE_IDLE, STATE_STANDBY, STATE_OK
 from homeassistant.helpers.entity import DeviceInfo
 from pyamplipi.amplipi import AmpliPi
 from pyamplipi.models import Zone, ZoneUpdate, Source
@@ -27,8 +27,8 @@ SUPPORT_AMPLIPI = (
         #        | SUPPORT_CLEAR_PLAYLIST
         | SUPPORT_PLAY
         #        | SUPPORT_SHUFFLE_SET
-        | SUPPORT_SELECT_SOUND_MODE
-        #        | SUPPORT_BROWSE_MEDIA
+        #        | SUPPORT_SELECT_SOUND_MODE
+        | SUPPORT_BROWSE_MEDIA
         #        | SUPPORT_REPEAT_SET
         | SUPPORT_TURN_OFF
         | SUPPORT_VOLUME_MUTE
@@ -40,10 +40,10 @@ _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 1
 
+
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up the AmpliPi MultiZone Audio Controller"""
 
-    global ZONES
     hass_entry = hass.data[DOMAIN][config_entry.entry_id]
 
     amplipi: AmpliPi = hass_entry[AMPLIPI_OBJECT]
@@ -52,11 +52,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     version = hass_entry[CONF_VERSION]
 
     zones = await amplipi.get_zones()
-    groups = await amplipi.get_groups()
 
-    ZONES = [AmpliPiZone(zone, name, vendor, version, amplipi) for zone in zones]
-
-    async_add_entities(ZONES, False)
+    async_add_entities([AmpliPiZone(zone, name, vendor, version, amplipi) for zone in zones], False)
 
 
 async def async_remove_entry(hass, entry) -> None:
@@ -149,14 +146,16 @@ class AmpliPiZone(MediaPlayerEntity):
     # def media_seek(self, position):
     #     pass
 
-    def play_media(self, media_type, media_id, **kwargs):
+    async def async_play_media(self, media_type, media_id, **kwargs):
+        _LOGGER.warning('Play Media {}', media_id)
         pass
 
     async def async_select_source(self, source):
-
+        _LOGGER.warning('Select Source')
         pass
 
-    def select_sound_mode(self, sound_mode):
+    async def async_select_sound_mode(self, sound_mode):
+        _LOGGER.warning('Select sound mode')
         pass
 
     def clear_playlist(self):
@@ -229,7 +228,7 @@ class AmpliPiZone(MediaPlayerEntity):
 
     async def async_update(self):
         """Retrieve latest state."""
-        _LOGGER.warning("Retrieving state for zone %d", self._zone.id + 1)
+        _LOGGER.info("Retrieving state for zone %d", self._zone.id + 1)
 
         try:
             state = await self._amplipi.get_zone(self._zone.id)
@@ -255,9 +254,9 @@ class AmpliPiZone(MediaPlayerEntity):
         """Return the state of the zone."""
         if not self._zone or self._zone.disabled:
             return STATE_OFF
-        if not self._source:
+        if self._source is None:
             return STATE_ON
-        if not self._source.info or not self._source.info.state:
+        if self._source.info is None or self._source.info.state is None:
             return STATE_IDLE
         if self._source.info.state in (
                 'paused'
@@ -270,9 +269,9 @@ class AmpliPiZone(MediaPlayerEntity):
         if self._source.info.state in (
                 'stopped'
         ):
-            return STATE_IDLE
+            return STATE_STANDBY
 
-        return STATE_STANDBY
+        return STATE_OK
 
     @property
     def volume_level(self):
