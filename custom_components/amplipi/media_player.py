@@ -204,7 +204,7 @@ class AmpliPiDac(MediaPlayerEntity):
         return DeviceInfo(
             identifiers={(DOMAIN, self.unique_id)},
             model="AmpliPi Digital Audio Controller",
-            name="DAC " + self._source.id,
+            name=self._name,
         )
 
     # name: str | None
