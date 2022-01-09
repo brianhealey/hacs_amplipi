@@ -3,7 +3,7 @@
   "name": "AmpliPi",
   "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/amplipi",
-  "requirements": ["zeroconf==0.37.0","pyamplipi==0.4.2"],
+  "requirements": ["zeroconf==0.37.0","pyamplipi==0.4.3"],
   "ssdp": [],
   "zeroconf": [{ "type": "_http._tcp.local.", "name": "amplipi-api._http._tcp.local."}],
   "homekit": {},

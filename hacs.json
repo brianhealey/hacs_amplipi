@@ -3,5 +3,5 @@
   "domains": ["media_player"],
   "iot_class": "local_polling",
   "render_readme": true,
-  "requirements": ["zeroconf==0.37.0","pyamplipi==0.4.2"]
+  "requirements": ["zeroconf==0.37.0","pyamplipi==0.4.3"]
 }
