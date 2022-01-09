@@ -228,7 +228,7 @@ class AmpliPiDac(MediaPlayerEntity):
     @property
     def name(self):
         """Return the name of the zone."""
-        return self._source.name
+        return self._name
 
     async def async_update(self):
         """Retrieve latest state."""
