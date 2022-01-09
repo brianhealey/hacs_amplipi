@@ -9,22 +9,11 @@ from pyamplipi.amplipi import AmpliPi
 
 from .const import DOMAIN, AMPLIPI_OBJECT, CONF_VENDOR, CONF_VERSION
 
-# TODO List the platforms that you want to support.
-# For your initial PR, limit it to 1 platform.
+
 PLATFORMS = ["media_player"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up AmpliPi from a config entry."""
-    # TODO Store an API object for your platforms to access
-    # data = {
-    #            CONF_NAME: self._name,
-    #            CONF_HOST: self._controller_hostname,
-    #            CONF_PORT: self._controller_port,
-    #            CONF_ID: self._uuid,
-    #            CONF_VENDOR: self._vendor,
-    #            CONF_VERSION: self._version
-    #        },
 
     hostname = entry.data[CONF_HOST]
     port = entry.data[CONF_PORT]

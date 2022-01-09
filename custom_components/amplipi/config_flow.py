@@ -8,6 +8,7 @@ import async_timeout
 import voluptuous as vol
 from aiohttp import ClientError, ClientSession
 from homeassistant import config_entries, exceptions
+from homeassistant.components import zeroconf
 from homeassistant.const import CONF_ID, CONF_NAME, CONF_PORT, CONF_HOST
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -91,15 +92,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return await self.async_step_discovery_confirm()
 
-    async def async_step_zeroconf(self, discovery_info: DiscoveryInfoType):
+    async def async_step_zeroconf(self, discovery_info: zeroconf.ZeroconfServiceInfo):
         """Handle zeroconf discovery."""
         _LOGGER.warning("discovered %s", discovery_info)
-        self._controller_hostname = discovery_info['host']
-        self._controller_port = discovery_info['port']
-        self._name = discovery_info["properties"]["name"]
-        self._vendor = discovery_info["properties"]["vendor"]
-        self._version = discovery_info["properties"]["version"]
-        self._uuid = discovery_info["properties"]["name"]  # this is not right.  we need a uuid
+        self._controller_hostname = discovery_info.host
+        self._controller_port = discovery_info.port
+        self._name = discovery_info.properties['name']
+        self._vendor = discovery_info.properties['vendor']
+        self._version = discovery_info.properties['version']
+        self._uuid = discovery_info.properties['name']  # this is not right.  we need a uuid
 
         await self._set_uid_and_abort()
 
