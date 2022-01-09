@@ -24,7 +24,7 @@ async def async_retrieve_info(hass, hostname, port):
     """Validate the user input allows us to connect."""
     session: ClientSession = async_get_clientsession(hass)
 
-    _LOGGER.warning("Attempting to retrieve AmpliPi details")
+    _LOGGER.info("Attempting to retrieve AmpliPi details")
 
     try:
         with async_timeout.timeout(5000):
@@ -94,7 +94,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_zeroconf(self, discovery_info: zeroconf.ZeroconfServiceInfo):
         """Handle zeroconf discovery."""
-        _LOGGER.warning("discovered %s", discovery_info)
+        _LOGGER.info("discovered %s", discovery_info)
         self._controller_hostname = discovery_info.host
         self._controller_port = discovery_info.port
         self._name = discovery_info.properties['name']

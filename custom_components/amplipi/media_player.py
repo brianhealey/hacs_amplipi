@@ -6,12 +6,13 @@ from homeassistant.components.cover import SUPPORT_STOP
 from homeassistant.components.media_player import MediaPlayerEntity, BrowseMedia, SUPPORT_VOLUME_MUTE, \
     SUPPORT_VOLUME_SET, SUPPORT_SELECT_SOURCE, SUPPORT_PLAY_MEDIA, SUPPORT_PLAY, SUPPORT_BROWSE_MEDIA, \
     MEDIA_CLASS_DIRECTORY
-from homeassistant.components.media_player.const import MEDIA_CLASS_MUSIC, SUPPORT_PAUSE, SUPPORT_NEXT_TRACK
+from homeassistant.components.media_player.const import MEDIA_CLASS_MUSIC, SUPPORT_PAUSE, SUPPORT_NEXT_TRACK, \
+    MEDIA_TYPE_MUSIC
 from homeassistant.const import CONF_NAME, STATE_OFF, STATE_PLAYING, \
     STATE_PAUSED, STATE_IDLE, STATE_STANDBY, STATE_OK, STATE_UNKNOWN
 from homeassistant.helpers.entity import DeviceInfo
 from pyamplipi.amplipi import AmpliPi
-from pyamplipi.models import ZoneUpdate, Source, SourceUpdate, GroupUpdate, Stream
+from pyamplipi.models import ZoneUpdate, Source, SourceUpdate, GroupUpdate, Stream, Group, Zone, Announcement
 
 from .const import (
     DOMAIN, AMPLIPI_OBJECT, CONF_VENDOR, CONF_VERSION,
@@ -23,7 +24,7 @@ SUPPORT_AMPLIPI_DAC = (
         | SUPPORT_BROWSE_MEDIA
         | SUPPORT_VOLUME_MUTE
         | SUPPORT_VOLUME_SET
-        # | SUPPORT_VOLUME_STEP
+    # | SUPPORT_VOLUME_STEP
 )
 
 SUPPORT_AMPLIPI_MEDIA = (
@@ -38,6 +39,9 @@ _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 1
 
+DB_MAX = -80
+DB_MIN = 0
+
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up the AmpliPi MultiZone Audio Controller"""
@@ -49,16 +53,24 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     name = hass_entry[CONF_NAME]
     version = hass_entry[CONF_VERSION]
 
-    sources = await amplipi.get_sources()
+    status = await amplipi.get_status()
 
     async_add_entities([
-        AmpliPiDac(DOMAIN, f"{name} Input {source.id}", source.id, vendor, version, amplipi)
-        for source in sources
+        AmpliPiDac(DOMAIN, source, status.streams, vendor, version, amplipi)
+        for source in status.sources
     ])
 
 
 async def async_remove_entry(hass, entry) -> None:
     pass
+
+
+def db_to_pct(decibels: float) -> float:
+    return (decibels - DB_MIN) / (DB_MAX - DB_MIN)
+
+
+def pct_to_db(percentage: float) -> float:
+    return 0 - ((DB_MAX - DB_MIN) * percentage)
 
 
 class AmpliPiDac(MediaPlayerEntity):
@@ -85,16 +97,18 @@ class AmpliPiDac(MediaPlayerEntity):
     #         )
     #     )
 
-    def __init__(self, namespace: str, name: str, dac_id: int, vendor: str, version: str, client: AmpliPi):
-        self._streams = []
-        self._source_id = dac_id
-        self._name = name
+    def __init__(self, namespace: str, source: Source, streams: List[Stream], vendor: str, version: str,
+                 client: AmpliPi):
+        self._streams = streams
+        self._zones = []
+        self._groups = []
+        self._name = source.name
         self._vendor = vendor
         self._version = version
-        self._source = None
-        self._id = dac_id
+        self._source = source
+        self._id = source.id
         self._client = client
-        self._unique_id = f"{namespace}_dac_{dac_id}"
+        self._unique_id = f"{namespace}_input_{source.id}"
         self._last_update_successful = False
 
     async def async_mute_volume(self, mute):
@@ -110,19 +124,16 @@ class AmpliPiDac(MediaPlayerEntity):
     async def async_set_volume_level(self, volume):
         if volume is None:
             return
-        assert self._source_id is not None
         _LOGGER.info(f"setting volume to {volume}")
         await self._update_source(SourceUpdate(
-            vol_delta=volume
+            vol_delta=pct_to_db(volume)
         ))
 
     async def async_media_play(self):
-        assert self._source is not None
         await self._client.play_stream(self._source.id)
         await self.async_update()
 
     async def async_media_pause(self):
-        assert self._source is not None
         await self._client.pause_stream(self._source.id)
         await self.async_update()
 
@@ -133,7 +144,6 @@ class AmpliPiDac(MediaPlayerEntity):
     #     pass
 
     async def async_media_next_track(self):
-        assert self._source is not None
         await self._client.next_stream(self._source.id)
         await self.async_update()
 
@@ -142,11 +152,29 @@ class AmpliPiDac(MediaPlayerEntity):
 
     async def async_play_media(self, media_type, media_id, **kwargs):
         _LOGGER.warning(f'Play Media {media_type} {media_id} {kwargs}')
+
+        if media_type is MEDIA_TYPE_MUSIC:
+            _LOGGER.warning(f'This might be a TTS announcement..')
+            await self._client.announce(
+                Announcement(
+                    source_id=self._source.id,
+                    media=media_id,
+                    vol=-40,
+                )
+            )
+
         pass
 
     async def async_select_source(self, source):
-        _LOGGER.warning(f'Select Source {source}')
-        pass
+        stream = next(filter(lambda z: z.name == source, self._streams), None)
+        if stream is None:
+            _LOGGER.warning(f'Select Source {source} called but a match could not be found in the stream cache, '
+                            f'{self._streams}')
+            pass
+        else:
+            await self._update_source(SourceUpdate(
+                input=stream.id
+            ))
 
     async def async_select_sound_mode(self, sound_mode):
         _LOGGER.warning(f'Select sound mode {sound_mode}')
@@ -178,7 +206,7 @@ class AmpliPiDac(MediaPlayerEntity):
                 can_expand=False,
                 media_class=MEDIA_CLASS_MUSIC,
                 media_content_id=stream.name,
-                media_content_type="speaker",
+                media_content_type=stream.type,
                 title=stream.name + " - " + stream.type,
             ) for stream in streams]
         )
@@ -186,6 +214,17 @@ class AmpliPiDac(MediaPlayerEntity):
     @property
     def supported_features(self):
         """Return flag of media commands that are supported."""
+
+        if 'stream=' in self._source.input:
+            stream_id = int(self._source.input.split('=')[1])
+            stream = next(filter(lambda z: z.id == stream_id, self._streams), None)
+
+            if stream is not None and stream.type in (
+                'spotify',
+                'pandora'
+            ):
+                return SUPPORT_AMPLIPI_DAC | SUPPORT_AMPLIPI_MEDIA
+
         return SUPPORT_AMPLIPI_DAC
 
     @property
@@ -203,8 +242,9 @@ class AmpliPiDac(MediaPlayerEntity):
         """Return device info for this device."""
         return DeviceInfo(
             identifiers={(DOMAIN, self.unique_id)},
-            model="AmpliPi Digital Audio Controller",
+            model="AmpliPi MultiZone Digital Audio Controller",
             name=self._name,
+            manufacturer=self._vendor,
         )
 
     # name: str | None
@@ -232,25 +272,31 @@ class AmpliPiDac(MediaPlayerEntity):
 
     async def async_update(self):
         """Retrieve latest state."""
-        _LOGGER.info(f'Retrieving state for source {self._source_id}')
+        _LOGGER.info(f'Retrieving state for source {self._source.id}')
 
         try:
-            state = await self._client.get_source(self._source_id)
-            streams = await self._client.get_streams()
+            state = await self._client.get_status()
+            source = next(filter(lambda z: z.id == self._source.id, state.sources), None)
+            streams = state.streams
         except Exception:
             self._last_update_successful = False
-            _LOGGER.error(f'Could not update source {self._source_id}')
+            _LOGGER.error(f'Could not update source {self._source.id}')
             return
 
-        if not state:
+        if not source:
             self._last_update_successful = False
             return
 
-        self.sync_state(state, streams)
+        groups = list(filter(lambda z: z.source_id == self._source.id, state.groups))
+        zones = list(filter(lambda z: z.source_id == self._source.id, state.zones))
 
-    def sync_state(self, state: Source, streams: List[Stream]):
+        self.sync_state(source, streams, zones, groups)
+
+    def sync_state(self, state: Source, streams: List[Stream], zones: List[Zone], groups: List[Group]):
         self._source = state
         self._streams = streams
+        self._zones = zones
+        self._groups = groups
         self._last_update_successful = True
 
     @property
@@ -258,60 +304,81 @@ class AmpliPiDac(MediaPlayerEntity):
         """Return the state of the zone."""
         if self._last_update_successful is False:
             return STATE_UNKNOWN
-        if self._source is None:
+        elif self._source is None:
             return STATE_OFF
-        if self._source.info is None or self._source.info.state is None:
+        elif self._source.info is None or self._source.info.state is None:
             return STATE_IDLE
-        if self._source.info.state in (
+        elif self._source.info.name is f'{self._source.name} - rca' and self._source.info.state in (
+                'unknown'
+        ):
+            return STATE_IDLE
+        elif self._source.info.state in (
                 'paused'
         ):
             return STATE_PAUSED
-        if self._source.info.state in (
+        elif self._source.info.state in (
                 'playing'
         ):
             return STATE_PLAYING
-        if self._source.info.state in (
+        elif self._source.info.state in (
                 'stopped'
         ):
-            return STATE_STANDBY
+            return STATE_IDLE
+        elif self._source.info.state in (
+                'stopped'
+        ):
+            return STATE_IDLE
 
-        return STATE_OK
+        return STATE_IDLE
 
     @property
     def volume_level(self):
         """Volume level of the media player (0..1)."""
 
-        if self._source is None:
-            return 0
+        if self._source.vol_delta is None:
+            group = next(filter(lambda z: z.vol_delta is not None, self._groups), None)
+            zone = next(filter(lambda z: z.vol is not None, self._zones), None)
+            if group is not None:
+                return group.vol_delta
+            elif zone is not None:
+                return zone.vol
+            return STATE_UNKNOWN
 
-        return self._source.vol_delta
+        return db_to_pct(self._source.vol_delta)
 
     @property
     def is_volume_muted(self):
         """Boolean if volume is currently muted."""
-        if self._source is None:
-            return False
+        if self._source.mute is None:
+            group = next(filter(lambda z: z.mute is not None, self._groups), None)
+            zone = next(filter(lambda z: z.mute is not None, self._zones), None)
+            if group is not None:
+                return group.mute
+            elif zone is not None:
+                return zone.mute
+            return STATE_UNKNOWN
 
         return self._source.mute
 
     @property
     def source_list(self):
         """List of available input sources."""
-        return [stream.name for stream in self._streams]
+        return [stream.name for stream in self._streams].extend(['rca 1', 'rca 2', 'rca 3', 'rca 4'])
 
     async def _update_source(self, update: SourceUpdate):
-        await self._client.set_source(self._source_id, update)
+        await self._client.set_source(self._source.id, update)
+        await self.async_update()
 
     async def _update_zones(self, update: ZoneUpdate):
         zones = await self._client.get_zones()
-        associated_zones = filter(lambda z: z.source_id is self._source.id, zones)
+        associated_zones = filter(lambda z: z.source_id == self._source.id, zones)
         for zone in associated_zones:
             await self._client.set_zone(zone.id, update)
         await self.async_update()
 
     async def _update_groups(self, update: GroupUpdate):
         groups = await self._client.get_groups()
-        associated_groups = filter(lambda g: g.source_id is self._source.id, groups)
+        associated_groups = filter(lambda g: g.source_id == self._source.id, groups)
         for group in associated_groups:
             await self._client.set_group(group.id, update)
         await self.async_update()
