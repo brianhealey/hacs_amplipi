@@ -87,7 +87,7 @@ class AmpliPiDac(MediaPlayerEntity):
 
     def __init__(self, namespace: str, name: str, dac_id: int, vendor: str, version: str, client: AmpliPi):
         self._streams = []
-        self._source_id = None
+        self._source_id = dac_id
         self._name = name
         self._vendor = vendor
         self._version = version
