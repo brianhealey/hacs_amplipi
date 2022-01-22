@@ -2,6 +2,7 @@
 import logging
 from typing import List
 
+import validators
 from homeassistant.components.cover import SUPPORT_STOP
 from homeassistant.components.media_player import MediaPlayerEntity, BrowseMedia, SUPPORT_VOLUME_MUTE, \
     SUPPORT_VOLUME_SET, SUPPORT_SELECT_SOURCE, SUPPORT_PLAY_MEDIA, SUPPORT_PLAY, SUPPORT_BROWSE_MEDIA, \
@@ -15,7 +16,7 @@ from pyamplipi.amplipi import AmpliPi
 from pyamplipi.models import ZoneUpdate, Source, SourceUpdate, GroupUpdate, Stream, Group, Zone, Announcement
 
 from .const import (
-    DOMAIN, AMPLIPI_OBJECT, CONF_VENDOR, CONF_VERSION,
+    DOMAIN, AMPLIPI_OBJECT, CONF_VENDOR, CONF_VERSION, CONF_WEBAPP, CONF_API_PATH,
 )
 
 RCA_INPUTS = [
@@ -87,11 +88,12 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     vendor = hass_entry[CONF_VENDOR]
     name = hass_entry[CONF_NAME]
     version = hass_entry[CONF_VERSION]
+    image_base_path = f'{hass_entry[CONF_WEBAPP]}{hass_entry[CONF_API_PATH]}'
 
     status = await amplipi.get_status()
 
     async_add_entities([
-        AmpliPiDac(DOMAIN, source, status.streams, vendor, version, amplipi)
+        AmpliPiDac(DOMAIN, source, status.streams, vendor, version, image_base_path, amplipi)
         for source in status.sources
     ])
 
@@ -107,6 +109,9 @@ def db_to_pct(decibels: float) -> float:
 def pct_to_db(percentage: float) -> float:
     print(f'using percentage {percentage}')
     return DB_MAX - ((DB_MAX - DB_MIN) * percentage)
+
+
+
 
 
 class AmpliPiDac(MediaPlayerEntity):
@@ -134,8 +139,9 @@ class AmpliPiDac(MediaPlayerEntity):
     #     )
 
     def __init__(self, namespace: str, source: Source, streams: List[Stream], vendor: str, version: str,
-                 client: AmpliPi):
+                 image_base_path: str, client: AmpliPi):
         self._streams = streams
+        self._image_base_path = image_base_path
         self._zones = []
         self._groups = []
         self._name = source.name
@@ -225,6 +231,22 @@ class AmpliPiDac(MediaPlayerEntity):
     def set_repeat(self, repeat):
         pass
 
+    def build_url(self, img_url):
+        if img_url is None:
+            return None
+
+        # if we have a full url, go ahead and return it
+        if validators.url(img_url):
+            return img_url
+
+        # otherwise it might be a relative path.
+        new_url = f'{self._image_base_path}{img_url}'
+
+        if validators.url(new_url):
+            return new_url
+
+        return None
+
     async def async_browse_media(self, media_content_type=None,
                                  media_content_id=None) -> BrowseMedia:
 
@@ -237,31 +259,31 @@ class AmpliPiDac(MediaPlayerEntity):
             media_content_id="",
             media_content_type="",
             title="AmpliPi",
-            children=RCA_INPUTS.extend([BrowseMedia(
+            children=([BrowseMedia(
                 can_play=True,
                 can_expand=False,
                 media_class=MEDIA_CLASS_MUSIC,
                 media_content_id=stream.name,
                 media_content_type=stream.type,
                 title=stream.name + " - " + stream.type,
-            ) for stream in streams])
+            ) for stream in streams]).extend(RCA_INPUTS)
         )
 
     @property
     def supported_features(self):
         """Return flag of media commands that are supported."""
 
-        if 'stream=' in self._source.input:
-            stream_id = int(self._source.input.split('=')[1])
-            stream = next(filter(lambda z: z.id == stream_id, self._streams), None)
+        # if 'stream=' in self._source.input:
+        #     stream_id = int(self._source.input.split('=')[1])
+        #     stream = next(filter(lambda z: z.id == stream_id, self._streams), None)
+        #
+        #     if stream is not None and stream.type in (
+        #         'spotify',
+        #         'pandora'
+        #     ):
+        #         return SUPPORT_AMPLIPI_MEDIA
 
-            if stream is not None and stream.type in (
-                'spotify',
-                'pandora'
-            ):
-                return SUPPORT_AMPLIPI_MEDIA
-
-        return SUPPORT_AMPLIPI_DAC
+        return SUPPORT_AMPLIPI_MEDIA
 
     @property
     def media_content_type(self):
@@ -342,7 +364,7 @@ class AmpliPiDac(MediaPlayerEntity):
             self._attr_media_album_name = info.album
             self._attr_media_title = info.name
             self._attr_media_track = info.track
-            self._attr_media_image_url = info.img_url
+            self._attr_media_image_url = build_url(info.img_url)
             self._attr_media_channel = info.station
         else:
             self._attr_media_album_artist = None

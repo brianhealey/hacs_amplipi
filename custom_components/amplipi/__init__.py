@@ -7,8 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from pyamplipi.amplipi import AmpliPi
 
-from .const import DOMAIN, AMPLIPI_OBJECT, CONF_VENDOR, CONF_VERSION
-
+from .const import DOMAIN, AMPLIPI_OBJECT, CONF_VENDOR, CONF_VERSION, CONF_WEBAPP, CONF_API_PATH
 
 PLATFORMS = ["media_player"]
 
@@ -20,7 +19,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         AMPLIPI_OBJECT: AmpliPi(
-            f'http://{hostname}:{port}/api',
+            f'{entry.data[CONF_WEBAPP]}/{CONF_API_PATH}',
             10,
             http_session=async_get_clientsession(hass)
         ),
@@ -30,6 +29,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_PORT: entry.data[CONF_PORT],
         CONF_ID: entry.data[CONF_ID],
         CONF_VERSION: entry.data[CONF_VERSION],
+        CONF_WEBAPP: entry.data[CONF_WEBAPP],
     }
 
     hass.config_entries.async_setup_platforms(entry, PLATFORMS)

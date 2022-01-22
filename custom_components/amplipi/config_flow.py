@@ -15,7 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import DiscoveryInfoType
 from pyamplipi.amplipi import AmpliPi
 
-from .const import DOMAIN, CONF_VENDOR, CONF_VERSION
+from .const import DOMAIN, CONF_VENDOR, CONF_VERSION, CONF_WEBAPP, CONF_API_PATH
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,6 +56,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._uuid: str | None = None
         self._vendor: str | None = None
         self._version: str | None = None
+        self._webapp_url: str | None = None
+        self._api_path: str | None = None
 
     @callback
     def _async_get_entry(self):
@@ -68,7 +70,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_PORT: self._controller_port,
                 CONF_ID: self._uuid,
                 CONF_VENDOR: self._vendor,
-                CONF_VERSION: self._version
+                CONF_VERSION: self._version,
+                CONF_WEBAPP: self._webapp_url,
+                CONF_API_PATH: self._api_path,
             },
         )
 
@@ -80,7 +84,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_HOST: self._controller_hostname,
                 CONF_PORT: self._controller_port,
                 CONF_VENDOR: self._vendor,
-                CONF_VERSION: self._version
+                CONF_VERSION: self._version,
+                CONF_WEBAPP: self._webapp_url,
+                CONF_API_PATH: self._api_path,
             }
         )
 
@@ -101,6 +107,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._vendor = discovery_info.properties['vendor']
         self._version = discovery_info.properties['version']
         self._uuid = discovery_info.properties['name']  # this is not right.  we need a uuid
+        self._webapp_url = discovery_info.properties['web_app']
+        self._api_path = discovery_info.properties['path']
 
         await self._set_uid_and_abort()
 
