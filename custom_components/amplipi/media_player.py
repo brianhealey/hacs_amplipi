@@ -9,7 +9,7 @@ from homeassistant.components.media_player import MediaPlayerEntity, BrowseMedia
 from homeassistant.components.media_player.const import MEDIA_CLASS_MUSIC, SUPPORT_PAUSE, SUPPORT_NEXT_TRACK, \
     MEDIA_TYPE_MUSIC
 from homeassistant.const import CONF_NAME, STATE_OFF, STATE_PLAYING, \
-    STATE_PAUSED, STATE_IDLE, STATE_STANDBY, STATE_OK, STATE_UNKNOWN
+    STATE_PAUSED, STATE_IDLE, STATE_UNKNOWN
 from homeassistant.helpers.entity import DeviceInfo
 from pyamplipi.amplipi import AmpliPi
 from pyamplipi.models import ZoneUpdate, Source, SourceUpdate, GroupUpdate, Stream, Group, Zone, Announcement
@@ -17,6 +17,41 @@ from pyamplipi.models import ZoneUpdate, Source, SourceUpdate, GroupUpdate, Stre
 from .const import (
     DOMAIN, AMPLIPI_OBJECT, CONF_VENDOR, CONF_VERSION,
 )
+
+RCA_INPUTS = [
+    BrowseMedia(
+        can_play=True,
+        can_expand=False,
+        media_class=MEDIA_CLASS_MUSIC,
+        media_content_id="rca1",
+        media_content_type="input",
+        title="RCA Input 1",
+    ),
+    BrowseMedia(
+        can_play=True,
+        can_expand=False,
+        media_class=MEDIA_CLASS_MUSIC,
+        media_content_id="rca2",
+        media_content_type="input",
+        title="RCA Input 2",
+    ),
+    BrowseMedia(
+        can_play=True,
+        can_expand=False,
+        media_class=MEDIA_CLASS_MUSIC,
+        media_content_id="rca3",
+        media_content_type="input",
+        title="RCA Input 3",
+    ),
+    BrowseMedia(
+        can_play=True,
+        can_expand=False,
+        media_class=MEDIA_CLASS_MUSIC,
+        media_content_id="rca4",
+        media_content_type="input",
+        title="RCA Input 4",
+    ),
+]
 
 SUPPORT_AMPLIPI_DAC = (
         SUPPORT_SELECT_SOURCE
@@ -160,7 +195,7 @@ class AmpliPiDac(MediaPlayerEntity):
                 Announcement(
                     source_id=self._source.id,
                     media=media_id,
-                    vol=-40,
+                    vol=pct_to_db(.5),
                 )
             )
 
@@ -174,7 +209,7 @@ class AmpliPiDac(MediaPlayerEntity):
             pass
         else:
             await self._update_source(SourceUpdate(
-                input=stream.id
+                input=f'stream={stream.id}'
             ))
 
     async def async_select_sound_mode(self, sound_mode):
@@ -202,14 +237,14 @@ class AmpliPiDac(MediaPlayerEntity):
             media_content_id="",
             media_content_type="",
             title="AmpliPi",
-            children=[BrowseMedia(
+            children=RCA_INPUTS.extend([BrowseMedia(
                 can_play=True,
                 can_expand=False,
                 media_class=MEDIA_CLASS_MUSIC,
                 media_content_id=stream.name,
                 media_content_type=stream.type,
                 title=stream.name + " - " + stream.type,
-            ) for stream in streams]
+            ) for stream in streams])
         )
 
     @property
@@ -224,7 +259,7 @@ class AmpliPiDac(MediaPlayerEntity):
                 'spotify',
                 'pandora'
             ):
-                return SUPPORT_AMPLIPI_DAC | SUPPORT_AMPLIPI_MEDIA
+                return SUPPORT_AMPLIPI_MEDIA
 
         return SUPPORT_AMPLIPI_DAC
 
@@ -300,6 +335,23 @@ class AmpliPiDac(MediaPlayerEntity):
         self._groups = groups
         self._last_update_successful = True
 
+        info = self._source.info
+
+        if info is not None:
+            self._attr_media_album_artist = info.artist
+            self._attr_media_album_name = info.album
+            self._attr_media_title = info.name
+            self._attr_media_track = info.track
+            self._attr_media_image_url = info.img_url
+            self._attr_media_channel = info.station
+        else:
+            self._attr_media_album_artist = None
+            self._attr_media_album_name = None
+            self._attr_media_title = None
+            self._attr_media_track = None
+            self._attr_media_image_url = None
+            self._attr_media_channel = None
+
     @property
     def state(self):
         """Return the state of the zone."""
@@ -335,7 +387,6 @@ class AmpliPiDac(MediaPlayerEntity):
     @property
     def volume_level(self):
         """Volume level of the media player (0..1)."""
-
         if self._source.vol_delta is None:
             group = next(filter(lambda z: z.vol_delta is not None, self._groups), None)
             zone = next(filter(lambda z: z.vol is not None, self._zones), None)
@@ -348,7 +399,7 @@ class AmpliPiDac(MediaPlayerEntity):
         return db_to_pct(self._source.vol_delta)
 
     @property
-    def is_volume_muted(self):
+    def is_volume_muted(self) -> bool:
         """Boolean if volume is currently muted."""
         if self._source.mute is None:
             group = next(filter(lambda z: z.mute is not None, self._groups), None)
