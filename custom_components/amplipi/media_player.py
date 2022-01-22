@@ -66,11 +66,12 @@ async def async_remove_entry(hass, entry) -> None:
 
 
 def db_to_pct(decibels: float) -> float:
-    return (decibels - DB_MIN) / (DB_MAX - DB_MIN)
+    return 1 - (decibels - DB_MIN) / (DB_MAX - DB_MIN)
 
 
 def pct_to_db(percentage: float) -> float:
-    return 0 - ((DB_MAX - DB_MIN) * percentage)
+    print(f'using percentage {percentage}')
+    return DB_MAX - ((DB_MAX - DB_MIN) * percentage)
 
 
 class AmpliPiDac(MediaPlayerEntity):
