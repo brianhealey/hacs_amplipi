@@ -14,12 +14,9 @@ PLATFORMS = ["media_player"]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
-    hostname = entry.data[CONF_HOST]
-    port = entry.data[CONF_PORT]
-
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         AMPLIPI_OBJECT: AmpliPi(
-            f'{entry.data[CONF_WEBAPP]}/{CONF_API_PATH}',
+            f'{entry.data[CONF_WEBAPP]}/{entry.data[CONF_API_PATH]}',
             10,
             http_session=async_get_clientsession(hass)
         ),
@@ -30,6 +27,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_ID: entry.data[CONF_ID],
         CONF_VERSION: entry.data[CONF_VERSION],
         CONF_WEBAPP: entry.data[CONF_WEBAPP],
+        CONF_API_PATH: entry.data[CONF_API_PATH],
     }
 
     hass.config_entries.async_setup_platforms(entry, PLATFORMS)
