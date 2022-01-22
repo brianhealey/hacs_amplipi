@@ -16,7 +16,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         AMPLIPI_OBJECT: AmpliPi(
-            f'{entry.data[CONF_WEBAPP]}/{entry.data[CONF_API_PATH]}',
+            f'http://{entry.data[CONF_HOST]}:{entry.data[CONF_PORT]}/api/',
             10,
             http_session=async_get_clientsession(hass)
         ),

@@ -20,7 +20,7 @@ from .const import DOMAIN, CONF_VENDOR, CONF_VERSION, CONF_WEBAPP, CONF_API_PATH
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_retrieve_info(hass, hostname, port):
+async def async_retrieve_info(hass, host, port):
     """Validate the user input allows us to connect."""
     session: ClientSession = async_get_clientsession(hass)
 
@@ -29,7 +29,7 @@ async def async_retrieve_info(hass, hostname, port):
     try:
         with async_timeout.timeout(5000):
             client = AmpliPi(
-                f'http://{hostname}:{port}/api',
+                f"http://{host}:{port}/api/",
                 10,
                 session
             )

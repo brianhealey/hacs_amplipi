@@ -364,7 +364,7 @@ class AmpliPiDac(MediaPlayerEntity):
             self._attr_media_album_name = info.album
             self._attr_media_title = info.name
             self._attr_media_track = info.track
-            self._attr_media_image_url = build_url(info.img_url)
+            self._attr_media_image_url = self.build_url(info.img_url)
             self._attr_media_channel = info.station
         else:
             self._attr_media_album_artist = None
