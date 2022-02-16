@@ -90,15 +90,15 @@ class AmpliPiSource(MediaPlayerEntity):
     def __init__(self, namespace: str, source: Source, streams: List[Stream], vendor: str, version: str,
                  image_base_path: str, client: AmpliPi):
         self._streams = streams
+        self._id = source.id
         self._current_stream = None
         self._image_base_path = image_base_path
         self._zones = []
         self._groups = []
-        self._name = source.name
+        self._name = f"Source {self._id + 1}"
         self._vendor = vendor
         self._version = version
         self._source = source
-        self._id = source.id
         self._client = client
         self._unique_id = f"{namespace}_source_{source.id}"
         self._last_update_successful = False
@@ -174,7 +174,7 @@ class AmpliPiSource(MediaPlayerEntity):
 
     async def async_select_source(self, source):
 
-        if f'RCA Input {self._id}' == source:
+        if self._source is not None and self._source.name == source:
             await self._update_source(SourceUpdate(
                 input=f'local'
             ))
@@ -398,10 +398,6 @@ class AmpliPiSource(MediaPlayerEntity):
             return STATE_OFF
         elif self._source.info is None or self._source.info.state is None:
             return STATE_IDLE
-        elif self._source.info.name is f'{self._source.name} - rca' and self._source.info.state in (
-                'playing'
-        ):
-            return STATE_IDLE
         elif self._source.info.state in (
                 'paused'
         ):
@@ -452,7 +448,10 @@ class AmpliPiSource(MediaPlayerEntity):
     @property
     def source_list(self):
         """List of available input sources."""
-        return [stream.name for stream in self._streams] + [f'RCA Input {int(self._id) + 1}']
+        streams = [stream.name for stream in self._streams]
+        if self._source is not None:
+            streams += [self._source.name]
+        return streams
 
     async def _update_source(self, update: SourceUpdate):
         await self._client.set_source(self._source.id, update)
