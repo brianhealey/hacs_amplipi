@@ -100,12 +100,12 @@ async def async_remove_entry(hass, entry) -> None:
 
 
 def db_to_pct(decibels: float) -> float:
-    _LOGGER.warning(f'using decibel {decibels} with result {1 - (decibels - DB_MIN) / (DB_MAX - DB_MIN)}')
+    _LOGGER.debug(f'using decibel {decibels} with result {1 - (decibels - DB_MIN) / (DB_MAX - DB_MIN)}')
     return 1 - (decibels - DB_MIN) / (DB_MAX - DB_MIN)
 
 
 def pct_to_db(percentage: float) -> float:
-    _LOGGER.warning(f'using percentage {percentage} with result {DB_MAX - ((DB_MAX - DB_MIN) * percentage)}')
+    _LOGGER.debug(f'using percentage {percentage} with result {DB_MAX - ((DB_MAX - DB_MIN) * percentage)}')
     return DB_MAX - ((DB_MAX - DB_MIN) * percentage)
 
 
