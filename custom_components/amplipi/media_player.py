@@ -585,6 +585,12 @@ class AmpliPiZone(MediaPlayerEntity):
             model = "AmpliPi Group"
         else:
             model = "AmpliPi Zone"
+
+        via_device = None
+
+        if self._current_source is not None:
+            via_device = (DOMAIN,  f"{DOMAIN}_source_{self._current_source.id}")
+
         return DeviceInfo(
             identifiers={(DOMAIN, self.unique_id)},
             model=model,
@@ -592,7 +598,7 @@ class AmpliPiZone(MediaPlayerEntity):
             manufacturer=self._vendor,
             sw_version=self._version,
             configuration_url=self._image_base_path,
-            via_device=(DOMAIN,  f"{DOMAIN}_source_{self._current_source.id}")
+            via_device=via_device,
         )
 
     @property
