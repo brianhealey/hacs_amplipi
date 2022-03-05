@@ -693,7 +693,11 @@ class AmpliPiZone(MediaPlayerEntity):
     @property
     def volume_level(self):
         """Volume level of the media player (0..1)."""
-        return db_to_pct(self._zone.vol)
+        if self._is_group and self._group is not None:
+            db_to_pct(self._group.vol_delta)
+        elif self._zone is not None:
+            return db_to_pct(self._zone.vol)
+        return None
 
     @property
     def is_volume_muted(self) -> bool:
