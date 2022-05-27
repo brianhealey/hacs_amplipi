@@ -1,13 +1,14 @@
 """Support for interfacing with the AmpliPi Multizone home audio controller."""
 import logging
+import operator
+from functools import reduce
 from typing import List
 
 import validators
-from homeassistant.components.cover import SUPPORT_STOP
 from homeassistant.components.media_player import MediaPlayerEntity, SUPPORT_VOLUME_MUTE, \
     SUPPORT_VOLUME_SET, SUPPORT_SELECT_SOURCE, SUPPORT_PLAY_MEDIA, SUPPORT_PLAY
 from homeassistant.components.media_player.const import SUPPORT_PAUSE, SUPPORT_NEXT_TRACK, MEDIA_TYPE_MUSIC, \
-    SUPPORT_PREVIOUS_TRACK, SUPPORT_TURN_ON, SUPPORT_TURN_OFF, SUPPORT_GROUPING, SUPPORT_VOLUME_STEP
+    SUPPORT_PREVIOUS_TRACK, SUPPORT_TURN_ON, SUPPORT_TURN_OFF, SUPPORT_GROUPING, SUPPORT_VOLUME_STEP, SUPPORT_STOP
 from homeassistant.const import CONF_NAME, STATE_OFF, STATE_PLAYING, STATE_PAUSED, STATE_IDLE, STATE_UNKNOWN, \
     STATE_STANDBY
 from homeassistant.helpers.entity import DeviceInfo
@@ -27,14 +28,13 @@ SUPPORT_AMPLIPI_DAC = (
         | SUPPORT_VOLUME_STEP
 )
 
-SUPPORT_AMPLIPI_MEDIA = (
-        SUPPORT_AMPLIPI_DAC
-        | SUPPORT_STOP
-        | SUPPORT_PLAY
-        | SUPPORT_PAUSE
-        | SUPPORT_PREVIOUS_TRACK
-        | SUPPORT_NEXT_TRACK
-)
+SUPPORT_LOOKUP_DICT = {
+    'play': SUPPORT_PLAY,
+    'pause': SUPPORT_PAUSE,
+    'stop': SUPPORT_STOP,
+    'next': SUPPORT_NEXT_TRACK,
+    'prev': SUPPORT_PREVIOUS_TRACK,
+}
 
 SUPPORT_AMPLIPI_ZONE = (
         SUPPORT_SELECT_SOURCE
@@ -47,9 +47,6 @@ SUPPORT_AMPLIPI_ZONE = (
 _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 1
-
-DB_MAX = -80
-DB_MIN = 0
 
 
 def build_url(api_base_path, img_url):
@@ -101,16 +98,6 @@ async def async_remove_entry(hass, entry) -> None:
     pass
 
 
-def db_to_pct(decibels: float) -> float:
-    _LOGGER.debug(f'using decibel {decibels} with result {1 - (decibels - DB_MIN) / (DB_MAX - DB_MIN)}')
-    return 1 - (decibels - DB_MIN) / (DB_MAX - DB_MIN)
-
-
-def pct_to_db(percentage: float) -> float:
-    _LOGGER.debug(f'using percentage {percentage} with result {DB_MAX - ((DB_MAX - DB_MIN) * percentage)}')
-    return DB_MAX - ((DB_MAX - DB_MIN) * percentage)
-
-
 class AmpliPiSource(MediaPlayerEntity):
     """Representation of an AmpliPi Source Input, of which 4 are supported (Hard Coded)."""
 
@@ -160,13 +147,17 @@ class AmpliPiSource(MediaPlayerEntity):
                 zones=[z.id for z in self._zones],
                 groups=[z.id for z in self._groups],
                 update=ZoneUpdate(
-                    vol=round(pct_to_db(volume))
+                    vol_f=volume
                 )
             )
         )
 
     async def async_media_play(self):
         await self._client.play_stream(self._current_stream.id)
+        await self.async_update()
+
+    async def async_media_stop(self):
+        await self._client.stop_stream(self._current_stream.id)
         await self.async_update()
 
     async def async_media_pause(self):
@@ -190,7 +181,7 @@ class AmpliPiSource(MediaPlayerEntity):
                 Announcement(
                     source_id=self._source.id,
                     media=media_id,
-                    vol=round(pct_to_db(.5)),
+                    vol_f=.5,
                 )
             )
 
@@ -242,17 +233,18 @@ class AmpliPiSource(MediaPlayerEntity):
     def supported_features(self):
         """Return flag of media commands that are supported."""
 
-        if self._current_stream is not None:
-            # stream_id = int(self._source.input.split('=')[1])
-            # stream = next(filter(lambda z: z.id == stream_id, self._streams), None)
+        supported_features = SUPPORT_AMPLIPI_DAC
 
-            if self._current_stream is not None and self._current_stream.type in (
-                    'spotify',
-                    'pandora'
-            ):
-                return SUPPORT_AMPLIPI_MEDIA
+        if self._source is not None and self._source.info is not None and len(self._source.info.supported_cmds) > 0:
+            supported_features = supported_features | reduce(
+                operator.or_,
+                [
+                    SUPPORT_LOOKUP_DICT.get(key) for key
+                    in (SUPPORT_LOOKUP_DICT.keys() & self._source.info.supported_cmds)
+                ]
+            )
 
-        return SUPPORT_AMPLIPI_DAC
+        return supported_features
 
     @property
     def media_content_type(self):
@@ -394,29 +386,24 @@ class AmpliPiSource(MediaPlayerEntity):
     def volume_level(self):
         """Volume level of the media player (0..1)."""
         # if self._source.vol_delta is None:
-        group = next(filter(lambda z: z.vol_delta is not None, self._groups), None)
-        zone = next(filter(lambda z: z.vol is not None, self._zones), None)
+        group = next(filter(lambda z: z.vol_f is not None, self._groups), None)
+        zone = next(filter(lambda z: z.vol_f is not None, self._zones), None)
         if group is not None:
-            return db_to_pct(group.vol_delta)
+            return group.vol_f
         elif zone is not None:
-            return db_to_pct(zone.vol)
+            return zone.vol_f
         return STATE_UNKNOWN
-
-        # return db_to_pct(self._source.vol_delta)
 
     @property
     def is_volume_muted(self) -> bool:
         """Boolean if volume is currently muted."""
-        if self._source.mute is None:
-            group = next(filter(lambda z: z.mute is not None, self._groups), None)
-            zone = next(filter(lambda z: z.mute is not None, self._zones), None)
-            if group is not None:
-                return group.mute
-            elif zone is not None:
-                return zone.mute
-            return STATE_UNKNOWN
-
-        return self._source.mute
+        group = next(filter(lambda z: z.mute is not None, self._groups), None)
+        zone = next(filter(lambda z: z.mute is not None, self._zones), None)
+        if group is not None:
+            return group.mute
+        elif zone is not None:
+            return zone.mute
+        return STATE_UNKNOWN
 
     @property
     def source(self):
@@ -554,13 +541,13 @@ class AmpliPiZone(MediaPlayerEntity):
                 MultiZoneUpdate(
                     groups=[self._group.id],
                     update=ZoneUpdate(
-                        vol=pct_to_db(volume)
+                        vol_f=volume
                     )
                 )
             )
         else:
             await self._update_zone(ZoneUpdate(
-                vol=pct_to_db(volume)
+                vol_f=volume
             ))
 
     @property
@@ -589,7 +576,7 @@ class AmpliPiZone(MediaPlayerEntity):
         via_device = None
 
         if self._current_source is not None:
-            via_device = (DOMAIN,  f"{DOMAIN}_source_{self._current_source.id}")
+            via_device = (DOMAIN, f"{DOMAIN}_source_{self._current_source.id}")
 
         return DeviceInfo(
             identifiers={(DOMAIN, self.unique_id)},
@@ -694,9 +681,9 @@ class AmpliPiZone(MediaPlayerEntity):
     def volume_level(self):
         """Volume level of the media player (0..1)."""
         if self._is_group and self._group is not None:
-            db_to_pct(self._group.vol_delta)
+            return self._group.vol_f
         elif self._zone is not None:
-            return db_to_pct(self._zone.vol)
+            return self._zone.vol_f
         return None
 
     @property
