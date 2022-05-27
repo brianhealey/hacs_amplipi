@@ -5,16 +5,21 @@ from functools import reduce
 from typing import List
 
 import validators
+from homeassistant.components import media_source
 from homeassistant.components.media_player import MediaPlayerEntity, SUPPORT_VOLUME_MUTE, \
-    SUPPORT_VOLUME_SET, SUPPORT_SELECT_SOURCE, SUPPORT_PLAY_MEDIA, SUPPORT_PLAY
+    SUPPORT_VOLUME_SET, SUPPORT_SELECT_SOURCE, SUPPORT_PLAY_MEDIA, SUPPORT_PLAY, BrowseMedia
 from homeassistant.components.media_player.const import SUPPORT_PAUSE, SUPPORT_NEXT_TRACK, MEDIA_TYPE_MUSIC, \
-    SUPPORT_PREVIOUS_TRACK, SUPPORT_TURN_ON, SUPPORT_TURN_OFF, SUPPORT_GROUPING, SUPPORT_VOLUME_STEP, SUPPORT_STOP
+    SUPPORT_PREVIOUS_TRACK, SUPPORT_TURN_ON, SUPPORT_TURN_OFF, SUPPORT_GROUPING, SUPPORT_VOLUME_STEP, SUPPORT_STOP, \
+    SUPPORT_BROWSE_MEDIA
 from homeassistant.const import CONF_NAME, STATE_OFF, STATE_PLAYING, STATE_PAUSED, STATE_IDLE, STATE_UNKNOWN, \
     STATE_STANDBY
 from homeassistant.helpers.entity import DeviceInfo
 from pyamplipi.amplipi import AmpliPi
 from pyamplipi.models import ZoneUpdate, Source, SourceUpdate, GroupUpdate, Stream, Group, Zone, Announcement, \
     MultiZoneUpdate
+from homeassistant.components.media_player.browse_media import (
+    async_process_play_media_url,
+)
 
 from .const import (
     DOMAIN, AMPLIPI_OBJECT, CONF_VENDOR, CONF_VERSION, CONF_WEBAPP, )
@@ -26,6 +31,7 @@ SUPPORT_AMPLIPI_DAC = (
         | SUPPORT_VOLUME_SET
         | SUPPORT_GROUPING
         | SUPPORT_VOLUME_STEP
+        | SUPPORT_BROWSE_MEDIA
 )
 
 SUPPORT_LOOKUP_DICT = {
@@ -152,6 +158,14 @@ class AmpliPiSource(MediaPlayerEntity):
             )
         )
 
+    async def async_browse_media(self, media_content_type=None, media_content_id=None):
+        """Implement the websocket media browsing helper."""
+        return await media_source.async_browse_media(
+            self.hass,
+            media_content_id,
+            content_filter=lambda item: item.media_content_type.startswith("audio/"),
+        )
+
     async def async_media_play(self):
         await self._client.play_stream(self._current_stream.id)
         await self.async_update()
@@ -175,16 +189,20 @@ class AmpliPiSource(MediaPlayerEntity):
     async def async_play_media(self, media_type, media_id, **kwargs):
         _LOGGER.warning(f'Play Media {media_type} {media_id} {kwargs}')
 
-        if media_type is MEDIA_TYPE_MUSIC:
-            _LOGGER.warning(f'This might be a TTS announcement..')
-            await self._client.announce(
-                Announcement(
-                    source_id=self._source.id,
-                    media=media_id,
-                    vol_f=.5,
-                )
-            )
+        if media_source.is_media_source_id(media_id):
+            play_item = await media_source.async_resolve_media(self.hass, media_id)
+            media_id = play_item.url
+            _LOGGER.warning(f'Playing media source as announcement: {play_item} {media_id}')
 
+        media_id = async_process_play_media_url(self.hass, media_id)
+
+        await self._client.announce(
+            Announcement(
+                source_id=self._source.id,
+                media=media_id,
+                vol_f=.5,
+            )
+        )
         pass
 
     async def async_select_source(self, source):
@@ -249,7 +267,7 @@ class AmpliPiSource(MediaPlayerEntity):
     @property
     def media_content_type(self):
         """Content type of current playing media."""
-        return "speaker"
+        return MEDIA_TYPE_MUSIC
 
     @property
     def entity_registry_enabled_default(self):
@@ -408,7 +426,7 @@ class AmpliPiSource(MediaPlayerEntity):
     @property
     def source(self):
         if self._source is not None:
-            return self._source.input
+            return self._source.name
         return None
 
     @property
