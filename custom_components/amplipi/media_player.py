@@ -7,19 +7,18 @@ from typing import List
 import validators
 from homeassistant.components import media_source
 from homeassistant.components.media_player import MediaPlayerEntity, SUPPORT_VOLUME_MUTE, \
-    SUPPORT_VOLUME_SET, SUPPORT_SELECT_SOURCE, SUPPORT_PLAY_MEDIA, SUPPORT_PLAY, BrowseMedia
+    SUPPORT_VOLUME_SET, SUPPORT_SELECT_SOURCE, SUPPORT_PLAY_MEDIA, SUPPORT_PLAY
+from homeassistant.components.media_player.browse_media import (
+    async_process_play_media_url,
+)
 from homeassistant.components.media_player.const import SUPPORT_PAUSE, SUPPORT_NEXT_TRACK, MEDIA_TYPE_MUSIC, \
     SUPPORT_PREVIOUS_TRACK, SUPPORT_TURN_ON, SUPPORT_TURN_OFF, SUPPORT_GROUPING, SUPPORT_VOLUME_STEP, SUPPORT_STOP, \
     SUPPORT_BROWSE_MEDIA
-from homeassistant.const import CONF_NAME, STATE_OFF, STATE_PLAYING, STATE_PAUSED, STATE_IDLE, STATE_UNKNOWN, \
-    STATE_STANDBY
+from homeassistant.const import CONF_NAME, STATE_OFF, STATE_PLAYING, STATE_PAUSED, STATE_IDLE, STATE_UNKNOWN
 from homeassistant.helpers.entity import DeviceInfo
 from pyamplipi.amplipi import AmpliPi
 from pyamplipi.models import ZoneUpdate, Source, SourceUpdate, GroupUpdate, Stream, Group, Zone, Announcement, \
     MultiZoneUpdate
-from homeassistant.components.media_player.browse_media import (
-    async_process_play_media_url,
-)
 
 from .const import (
     DOMAIN, AMPLIPI_OBJECT, CONF_VENDOR, CONF_VERSION, CONF_WEBAPP, )
@@ -209,7 +208,11 @@ class AmpliPiSource(MediaPlayerEntity):
 
         if self._source is not None and self._source.name == source:
             await self._update_source(SourceUpdate(
-                input=f'local'
+                input='local'
+            ))
+        elif source == 'None':
+            await self._update_source(SourceUpdate(
+                input='None'
             ))
         else:
             stream = next(filter(lambda z: z.name == source, self._streams), None)
@@ -426,15 +429,19 @@ class AmpliPiSource(MediaPlayerEntity):
     @property
     def source(self):
         if self._source is not None:
-            return self._source.name
-        return None
+            if self._source.input == 'local':
+                return self._source.name
+            elif self._current_stream is not None:
+                return self._current_stream.name
+        return 'None'
 
     @property
     def source_list(self):
         """List of available input sources."""
-        streams = [stream.name for stream in self._streams]
+        streams = ['None']
         if self._source is not None:
             streams += [self._source.name]
+        streams += [stream.name for stream in self._streams]
         return streams
 
     async def _update_source(self, update: SourceUpdate):
