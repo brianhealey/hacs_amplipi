@@ -588,7 +588,7 @@ class AmpliPiZone(MediaPlayerEntity):
     @property
     def entity_registry_enabled_default(self):
         """Return if the entity should be enabled when first added to the entity registry."""
-        return False
+        return True
 
     @property
     def device_info(self) -> DeviceInfo:
