@@ -5,7 +5,7 @@
   "documentation": "https://www.home-assistant.io/integrations/amplipi",
   "requirements": ["zeroconf","pyamplipi==0.4.9","validators"],
   "ssdp": [],
-  "zeroconf": [{ "type": "_http._tcp.local.", "name": "amplipi-api._http._tcp.local."}],
+  "zeroconf": ["_amplipi._tcp.local."],
   "homekit": {},
   "dependencies": [],
   "codeowners": [
