@@ -46,13 +46,14 @@ async def async_retrieve_info(hass, host, port):
 def is_private_ip(ip: str) -> bool:
     """ Check if an ip is from a private network
     We prefer standard private networks."""
-    return ip.startswith('192.') or ip.startswith('10.')
+    private_prefixes = ['192.168.', '10.', '172.16.', '172.12.']
+    return any(map(ip.startswith, private_prefixes))
 
 def preferred_host(info: zeroconf.ZeroconfServiceInfo) -> str:
     """ AmpliPi can advertise several IPs (thanks docker!)
-    Prefer a private network like 192. or 10."""
+    Prefer a private network like 192.168. or 10."""
     host = info.host
-    private_ips = [ip for ip in info.addresses if is_private_ip(ip)]
+    private_ips = filter(is_private_ip, info.addresses)
     if not is_private_ip(info.host) and len(private_ips) > 0:
         host = private_ips[0]
     return host
