@@ -8,6 +8,7 @@ from typing import Any
 import async_timeout
 import voluptuous as vol
 from aiohttp import ClientError, ClientSession
+from ipaddress import ip_address as make_ip_address
 from homeassistant import config_entries, exceptions, data_entry_flow
 from homeassistant.components import zeroconf
 from homeassistant.const import CONF_ID, CONF_NAME, CONF_PORT, CONF_HOST
@@ -46,8 +47,11 @@ async def async_retrieve_info(hass, host, port):
 def is_private_ip(ip: str) -> bool:
     """ Check if an ip is from a private network
     We prefer standard private networks."""
-    private_prefixes = ['192.168.', '10.', '172.16.', '172.12.']
-    return any(map(ip.startswith, private_prefixes))
+    try:
+        addr = make_ip_address(ip)
+        return addr.is_private()
+    except Exception:
+        return False
 
 def preferred_host(info: zeroconf.ZeroconfServiceInfo) -> str:
     """ AmpliPi can advertise several IPs (thanks docker!)
