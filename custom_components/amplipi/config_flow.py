@@ -43,19 +43,6 @@ async def async_retrieve_info(hass, host, port):
         _LOGGER.error("Timed out when connecting to AmpliPi Controller")
         raise
 
-def is_private_ip(ip: str) -> bool:
-    """ Check if an ip is from a private network
-    We prefer standard private networks."""
-    return ip.startswith('192.') or ip.startswith('10.')
-
-def preferred_host(info: zeroconf.ZeroconfServiceInfo) -> str:
-    """ AmpliPi can advertise several IPs (thanks docker!)
-    Prefer a private network like 192. or 10."""
-    host = info.host
-    private_ips = [ip for ip in info.addresses if is_private_ip(ip)]
-    if not is_private_ip(info.host) and len(private_ips) > 0:
-        host = private_ips[0]
-    return host
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for AmpliPi."""
@@ -163,7 +150,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_zeroconf(self, discovery_info: zeroconf.ZeroconfServiceInfo):
         """Handle zeroconf discovery."""
         _LOGGER.info("discovered %s", discovery_info)
-        self._controller_hostname = preferred_host(discovery_info)
+        self._controller_hostname = discovery_info.host
         self._controller_port = discovery_info.port
         self._name = discovery_info.properties['name']
         self._vendor = discovery_info.properties['vendor']
