@@ -30,7 +30,7 @@ async def async_retrieve_info(hass, host, port):
     try:
         with async_timeout.timeout(5000):
             client = AmpliPi(
-                f"http://{host}:{port}/api/",
+                f"http://{host}:{port}/api",
                 10,
                 session
             )
