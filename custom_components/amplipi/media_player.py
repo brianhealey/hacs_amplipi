@@ -89,11 +89,11 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         for source in status.sources]
 
     zones: list[MediaPlayerEntity] = [
-        AmpliPiZone(DOMAIN, zone, None, status.streams, sources, vendor, version, image_base_path, amplipi)
+        AmpliPiZone(DOMAIN, zone, None, status.streams, status.sources, vendor, version, image_base_path, amplipi)
         for zone in status.zones]
 
     groups: list[MediaPlayerEntity] = [
-        AmpliPiZone(DOMAIN, None, group, status.streams, sources, vendor, version, image_base_path, amplipi)
+        AmpliPiZone(DOMAIN, None, group, status.streams, status.sources, vendor, version, image_base_path, amplipi)
         for group in status.groups]
 
     async_add_entities(sources + zones + groups)
@@ -507,7 +507,7 @@ class AmpliPiZone(MediaPlayerEntity):
             )
 
     def __init__(self, namespace: str, zone, group,
-                 streams: List[Stream], sources: List[MediaPlayerEntity],
+                 streams: List[Stream], sources: List[Source],
                  vendor: str, version: str, image_base_path: str,
                  client: AmpliPi):
         self._current_source = None
@@ -719,14 +719,10 @@ class AmpliPiZone(MediaPlayerEntity):
         else:
             return self._zone.mute
 
-    @property
-    def source(self):
-        if self._current_source is not None:
-            return f'Source {self._current_source.id + 1}'
-        return None
 
     async def async_select_source(self, source):
         source_id = int(source.split(' ')[1]) - 1
+        self._selected_source = source
         if self._is_group:
             await self._update_group(
                 MultiZoneUpdate(
@@ -751,3 +747,38 @@ class AmpliPiZone(MediaPlayerEntity):
     async def _update_group(self, update: MultiZoneUpdate):
         await self._client.set_zones(update)
         await self.async_update()
+
+    @property
+    def entity_registry_enabled_default(self):
+        """Return if the entity should be enabled when first added to the entity registry."""
+        return True
+
+
+
+    @property
+    def source_list(self):
+        """List of available input sources."""
+        source_list = ['None']
+        source_num = 1
+        if self._sources is not None:
+            for source in self._sources:
+                additional_text = ""
+                if source.info is not None:
+                    if source.info.name is not None:
+                        additional_text += source.info.name
+                if additional_text == "":
+                    source_list.append("Source " + str(source_num))
+                else:
+                    source_list.append("Source " + str(source_num) + " - " + additional_text)
+                source_num += 1
+        return source_list
+
+    @property
+    def source(self):
+        """Returns the current source playing, if this is wrong it won't show up as the selected source on HomeAssistant"""
+        if self._current_source is not None:
+            if self._current_source.info is not None and self._current_source.info.name is not None:
+                return f'Source {self._current_source.id + 1} - {self._current_source.info.name}'
+            else:
+                return f'Source {self._current_source.id + 1}'
+        return None
