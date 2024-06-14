@@ -45,8 +45,8 @@ SUPPORT_AMPLIPI_ZONE = (
         SUPPORT_SELECT_SOURCE
         | SUPPORT_VOLUME_MUTE
         | SUPPORT_VOLUME_SET
-        | SUPPORT_TURN_ON
-        | SUPPORT_TURN_OFF
+        | SUPPORT_BROWSE_MEDIA
+        | SUPPORT_PLAY_MEDIA
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -126,6 +126,7 @@ class AmpliPiSource(MediaPlayerEntity):
         self._client = client
         self._unique_id = f"{namespace}_source_{source.id}"
         self._last_update_successful = False
+    
 
     async def async_mute_volume(self, mute):
         if mute is None:
@@ -184,6 +185,12 @@ class AmpliPiSource(MediaPlayerEntity):
     async def async_media_next_track(self):
         await self._client.next_stream(self._current_stream.id)
         await self.async_update()
+
+    async def async_join_players(self, group_members):
+        """Join `group_members` as a player group with the current player."""
+
+    async def async_unjoin_player(self):
+        """Remove this player from any group."""
 
     async def async_play_media(self, media_type, media_id, **kwargs):
         _LOGGER.warning(f'Play Media {media_type} {media_id} {kwargs}')
@@ -461,6 +468,11 @@ class AmpliPiSource(MediaPlayerEntity):
             await self._client.set_group(group.id, update)
         await self.async_update()
 
+    @property
+    def extra_state_attributes(self):
+        return {"amplipi_source_id" : self._id}
+
+
 
 class AmpliPiZone(MediaPlayerEntity):
     """Representation of an AmpliPi Zone and/or Group. Supports Audio volume
@@ -488,6 +500,7 @@ class AmpliPiZone(MediaPlayerEntity):
                     disabled=False,
                 )
             )
+        #self.is_on = True
 
     async def async_turn_off(self):
         if self._is_group:
@@ -505,6 +518,7 @@ class AmpliPiZone(MediaPlayerEntity):
                     disabled=True,
                 )
             )
+        #self.is_on = False
 
     def __init__(self, namespace: str, zone, group,
                  streams: List[Stream], sources: List[Source],
@@ -538,6 +552,8 @@ class AmpliPiZone(MediaPlayerEntity):
             'Source 3',
             'Source 4',
         ]
+        self._available = False
+        self._extra_attributes = []
 
     async def async_mute_volume(self, mute):
         if mute is None:
@@ -578,8 +594,18 @@ class AmpliPiZone(MediaPlayerEntity):
     @property
     def supported_features(self):
         """Return flag of media commands that are supported."""
-        return SUPPORT_AMPLIPI_ZONE
 
+        supported_features = SUPPORT_AMPLIPI_DAC
+        if self._current_source is not None and self._current_source.info is not None and len(self._current_source.info.supported_cmds) > 0:
+            supported_features = supported_features | reduce(
+                operator.or_,
+                [
+                    SUPPORT_LOOKUP_DICT.get(key) for key
+                    in (SUPPORT_LOOKUP_DICT.keys() & self._current_source.info.supported_cmds)
+                ]
+            )
+        return supported_features
+    
     @property
     def media_content_type(self):
         """Content type of current playing media."""
@@ -621,6 +647,8 @@ class AmpliPiZone(MediaPlayerEntity):
     @property
     def name(self):
         """Return the name of the zone."""
+        if not self._available:
+            return self._name + " (Unavailable)"
         return self._name
 
     async def async_update(self):
@@ -654,6 +682,8 @@ class AmpliPiZone(MediaPlayerEntity):
             _LOGGER.error(f'Could not update source {self._id}')
             return
 
+        await self._get_extra_attributes()
+        self._available = await self._update_available()
         self.sync_state(zone, group, streams, state.sources, enabled)
 
     def sync_state(self, zone: Zone, group: Group, streams: List[Stream],
@@ -667,7 +697,6 @@ class AmpliPiZone(MediaPlayerEntity):
 
         info = None
         self._current_source = None
-        stream = None
 
         if self._is_group:
             self._current_source = next(filter(lambda s: self._group.source_id == s.id, sources), None)
@@ -676,6 +705,10 @@ class AmpliPiZone(MediaPlayerEntity):
 
         if self._current_source is not None:
             info = self._current_source.info
+
+        if self._current_source is not None and 'stream=' in self._current_source.input and 'stream=local' not in self._current_source.input:
+            stream_id = int(self._current_source.input.split('=')[1])
+            self._current_stream = next(filter(lambda z: z.id == stream_id, self._streams), None)
 
         if info is not None:
             self._attr_media_album_artist = info.artist
@@ -697,10 +730,29 @@ class AmpliPiZone(MediaPlayerEntity):
         """Return the state of the zone."""
         if self._last_update_successful is False:
             return STATE_UNKNOWN
-        elif self._enabled is True:
+        elif self._current_source is None:
+            return STATE_OFF
+        elif self._current_source.info is None or self._current_source.info.state is None:
+            return STATE_IDLE
+        elif self._current_source.info.state in (
+                'paused'
+        ):
+            return STATE_PAUSED
+        elif self._current_source.info.state in (
+                'playing'
+        ):
+            return STATE_PLAYING
+        elif self._current_source.info.state in (
+                'stopped'
+        ):
+            return STATE_IDLE
+        elif self._current_source.info.state in (
+                'stopped'
+        ):
             return STATE_IDLE
 
-        return STATE_OFF
+        return STATE_IDLE
+
 
     @property
     def volume_level(self):
@@ -718,7 +770,6 @@ class AmpliPiZone(MediaPlayerEntity):
             return self._group.mute
         else:
             return self._zone.mute
-
 
     async def async_select_source(self, source):
         source_id = int(source.split(' ')[1]) - 1
@@ -753,8 +804,6 @@ class AmpliPiZone(MediaPlayerEntity):
         """Return if the entity should be enabled when first added to the entity registry."""
         return True
 
-
-
     @property
     def source_list(self):
         """List of available input sources."""
@@ -782,3 +831,86 @@ class AmpliPiZone(MediaPlayerEntity):
             else:
                 return f'Source {self._current_source.id + 1}'
         return None
+
+    async def async_browse_media(self, media_content_type=None, media_content_id=None):
+        """Implement the websocket media browsing helper."""
+        return await media_source.async_browse_media(
+            self.hass,
+            media_content_id,
+            content_filter=lambda item: item.media_content_type.startswith("audio/"),
+        )
+    
+    async def async_play_media(self, media_type, media_id, **kwargs):
+        _LOGGER.warning(f'Play Media {media_type} {media_id} {kwargs}')
+
+        if media_source.is_media_source_id(media_id):
+            play_item = await media_source.async_resolve_media(self.hass, media_id)
+            media_id = play_item.url
+            _LOGGER.warning(f'Playing media source as announcement: {play_item} {media_id}')
+
+        media_id = async_process_play_media_url(self.hass, media_id)
+
+        await self._client.announce(
+            Announcement(
+                source_id=self._current_source.id,
+                media=media_id,
+                vol_f=.5,
+            )
+        )
+        pass
+    
+    @property
+    def available(self):
+        return self._available
+
+    @property
+    def extra_state_attributes(self):
+        return self._extra_attributes
+    
+    async def _get_extra_attributes(self):
+        if self._is_group:
+            state = await self._client.get_status()
+            zone_ids = []
+
+            for zone_id in self._group.zones:
+                for state_zone in state.zones:
+                    if state_zone.id == zone_id and not state_zone.disabled:
+                        zone_ids.append(zone_id)
+            self._extra_attributes = {"amplipi_zones" : zone_ids}
+
+            #if self._zone_num_cache != len(zone_ids):
+                #self.hass.bus.fire("group_change_event", {"group_change": True})
+        else:
+            self._extra_attributes = {"amplipi_zone_id" : self._zone.id}
+
+    async def _update_available(self):
+        state = await self._client.get_status()
+        if self._is_group:
+            for zone_id in self._group.zones:
+                for state_zone in state.zones:
+                    if state_zone.id == zone_id and not state_zone.disabled:
+                        return True
+            return False
+        elif self._zone is None or self._zone.disabled:
+            return False
+        return True
+
+    async def async_media_play(self):
+        await self._client.play_stream(self._current_stream.id)
+        await self.async_update()
+
+    async def async_media_stop(self):
+        await self._client.stop_stream(self._current_stream.id)
+        await self.async_update()
+
+    async def async_media_pause(self):
+        await self._client.pause_stream(self._current_stream.id)
+        await self.async_update()
+
+    async def async_media_previous_track(self):
+        await self._client.previous_stream(self._current_stream.id)
+        await self.async_update()
+
+    async def async_media_next_track(self):
+        await self._client.next_stream(self._current_stream.id)
+        await self.async_update()
