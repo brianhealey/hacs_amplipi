@@ -126,7 +126,7 @@ class AmpliPiSource(MediaPlayerEntity):
         self._client = client
         self._unique_id = f"{namespace}_source_{source.id}"
         self._last_update_successful = False
-    
+
 
     async def async_mute_volume(self, mute):
         if mute is None:
@@ -470,7 +470,11 @@ class AmpliPiSource(MediaPlayerEntity):
 
     @property
     def extra_state_attributes(self):
-        return {"amplipi_source_id" : self._id}
+        zone_list = []
+        for zone in self._zones:
+            zone_list.append(zone.id)
+        return {"amplipi_source_id" : self._id,
+                "amplipi_source_zones" : zone_list}
 
 
 
@@ -605,7 +609,7 @@ class AmpliPiZone(MediaPlayerEntity):
                 ]
             )
         return supported_features
-    
+
     @property
     def media_content_type(self):
         """Content type of current playing media."""
@@ -839,7 +843,7 @@ class AmpliPiZone(MediaPlayerEntity):
             media_content_id,
             content_filter=lambda item: item.media_content_type.startswith("audio/"),
         )
-    
+
     async def async_play_media(self, media_type, media_id, **kwargs):
         _LOGGER.warning(f'Play Media {media_type} {media_id} {kwargs}')
 
@@ -858,7 +862,7 @@ class AmpliPiZone(MediaPlayerEntity):
             )
         )
         pass
-    
+
     @property
     def available(self):
         return self._available
@@ -866,7 +870,7 @@ class AmpliPiZone(MediaPlayerEntity):
     @property
     def extra_state_attributes(self):
         return self._extra_attributes
-    
+
     async def _get_extra_attributes(self):
         if self._is_group:
             state = await self._client.get_status()
