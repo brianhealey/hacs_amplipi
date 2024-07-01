@@ -10,7 +10,7 @@ If you like this component, please give it a star on [github](https://github.com
 1. Ensure that [HACS](https://hacs.xyz) is installed.
 1. Navigate to HACS on the sidebar and open the HACS settings by selecting the three dots icon. From there select "custom repositories".
 ![Step 2](doc_img/customrepo.png)
-1. A dialog box should appear. In it, paste a link to to this repo, found at `https://github.com/micronova/hacs_amplipi`, under "Repository." Under "Category," select "Integration." Then click "Add."
+1. A dialog box should appear. In it, paste a link to to this repo, found at `https://github.com/micro-nova/hacs_amplipi`, under "Repository." Under "Category," select "Integration." Then click "Add."
 ![Step 3](doc_img/add.png)
 1. This will add the AmpliPi repository to your version of the HACS store! Search for it in the search bar and then click on it when it pops up.
 ![Step 4](doc_img/store.png)
