@@ -18,7 +18,7 @@ from homeassistant.const import CONF_NAME, STATE_OFF, STATE_PLAYING, STATE_PAUSE
 from homeassistant.helpers.entity import DeviceInfo
 from pyamplipi.amplipi import AmpliPi
 from pyamplipi.models import ZoneUpdate, Source, SourceUpdate, GroupUpdate, Stream, Group, Zone, Announcement, \
-    MultiZoneUpdate
+    MultiZoneUpdate, PlayMedia
 
 from .const import (
     DOMAIN, AMPLIPI_OBJECT, CONF_VENDOR, CONF_VERSION, CONF_WEBAPP, )
@@ -31,6 +31,12 @@ SUPPORT_AMPLIPI_DAC = (
         | SUPPORT_GROUPING
         | SUPPORT_VOLUME_STEP
         | SUPPORT_BROWSE_MEDIA
+)
+
+SUPPORT_AMPLIPI_ANNOUNCE = (
+        SUPPORT_PLAY_MEDIA
+        | SUPPORT_BROWSE_MEDIA
+        | SUPPORT_VOLUME_SET
 )
 
 SUPPORT_LOOKUP_DICT = {
@@ -95,8 +101,12 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     groups: list[MediaPlayerEntity] = [
         AmpliPiZone(DOMAIN, None, group, status.streams, status.sources, vendor, version, image_base_path, amplipi)
         for group in status.groups]
+    
+    announcer: list[MediaPlayerEntity] = [
+        AmpliPiAnnouncer(DOMAIN, vendor, version, image_base_path, amplipi)
+    ]
 
-    async_add_entities(sources + zones + groups)
+    async_add_entities(sources + zones + groups + announcer)
 
 
 async def async_remove_entry(hass, entry) -> None:
@@ -148,6 +158,14 @@ class AmpliPiSource(MediaPlayerEntity):
         if volume is None:
             return
         _LOGGER.warning(f"setting volume to {volume}")
+        
+        group = next(filter(lambda z: z.vol_f is not None, self._groups), None)
+        zone = next(filter(lambda z: z.vol_f is not None, self._zones), None)
+        if group is not None:
+            group.vol_f = volume
+        elif zone is not None:
+            zone.vol_f = volume
+        
         await self._update_zones(
             MultiZoneUpdate(
                 zones=[z.id for z in self._zones],
@@ -198,15 +216,13 @@ class AmpliPiSource(MediaPlayerEntity):
         if media_source.is_media_source_id(media_id):
             play_item = await media_source.async_resolve_media(self.hass, media_id)
             media_id = play_item.url
-            _LOGGER.warning(f'Playing media source as announcement: {play_item} {media_id}')
+            _LOGGER.warning(f'Playing media source: {play_item} {media_id}')
 
         media_id = async_process_play_media_url(self.hass, media_id)
-
-        await self._client.announce(
-            Announcement(
+        await self._client.play_media(
+            PlayMedia(
                 source_id=self._source.id,
-                media=media_id,
-                vol_f=.5,
+                media=media_id
             )
         )
         pass
@@ -317,7 +333,7 @@ class AmpliPiSource(MediaPlayerEntity):
     @property
     def name(self):
         """Return the name of the zone."""
-        return self._name
+        return "AmpliPi: " + self._name
 
     async def async_update(self):
         """Retrieve latest state."""
@@ -446,9 +462,7 @@ class AmpliPiSource(MediaPlayerEntity):
     def source_list(self):
         """List of available input sources."""
         streams = ['None']
-        if self._source is not None:
-            streams += [self._source.name]
-        streams += [stream.name for stream in self._streams]
+        streams += [stream.name for stream in self._streams if stream.id >= 1000 or stream.id - 996 == self._id]
         return streams
 
     async def _update_source(self, update: SourceUpdate):
@@ -475,8 +489,6 @@ class AmpliPiSource(MediaPlayerEntity):
             zone_list.append(zone.id)
         return {"amplipi_source_id" : self._id,
                 "amplipi_source_zones" : zone_list}
-
-
 
 class AmpliPiZone(MediaPlayerEntity):
     """Representation of an AmpliPi Zone and/or Group. Supports Audio volume
@@ -580,6 +592,12 @@ class AmpliPiZone(MediaPlayerEntity):
     async def async_set_volume_level(self, volume):
         if volume is None:
             return
+        
+        if self._is_group and self._group is not None:
+            self._group.vol_f = volume
+        elif self._zone is not None:
+            self._zone.vol_f = volume
+    
         _LOGGER.info(f"setting volume to {volume}")
         if self._is_group:
             await self._update_group(
@@ -618,7 +636,7 @@ class AmpliPiZone(MediaPlayerEntity):
     @property
     def entity_registry_enabled_default(self):
         """Return if the entity should be enabled when first added to the entity registry."""
-        return False
+        return True
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -652,8 +670,8 @@ class AmpliPiZone(MediaPlayerEntity):
     def name(self):
         """Return the name of the zone."""
         if not self._available:
-            return self._name + " (Unavailable)"
-        return self._name
+            return "AmpliPi: " + self._name + " (Unavailable)"
+        return "AmpliPi: " + self._name
 
     async def async_update(self):
         """Retrieve latest state."""
@@ -850,15 +868,24 @@ class AmpliPiZone(MediaPlayerEntity):
         if media_source.is_media_source_id(media_id):
             play_item = await media_source.async_resolve_media(self.hass, media_id)
             media_id = play_item.url
-            _LOGGER.warning(f'Playing media source as announcement: {play_item} {media_id}')
+            _LOGGER.warning(f'Playing media source: {play_item} {media_id}')
+
+        #No source, see if we can find an empty one
+        if self._current_source is None:
+            sources = await self._client.get_sources()
+            for source in sources:
+                if source is not None and (source.input == '' or source.input == 'None' or source.input is None):
+                    self._current_source = source
+            
+            if self._current_source is None:
+                raise Exception("Not attached to a source and all sources are in use. Clear out a source or select an already existing one and try again.")
+                
 
         media_id = async_process_play_media_url(self.hass, media_id)
-
-        await self._client.announce(
-            Announcement(
+        await self._client.play_media(
+            PlayMedia(
                 source_id=self._current_source.id,
                 media=media_id,
-                vol_f=.5,
             )
         )
         pass
@@ -918,3 +945,115 @@ class AmpliPiZone(MediaPlayerEntity):
     async def async_media_next_track(self):
         await self._client.next_stream(self._current_stream.id)
         await self.async_update()
+
+class AmpliPiAnnouncer(MediaPlayerEntity):
+    
+    @property
+    def should_poll(self):
+        """Polling needed."""
+        return True
+
+    def __init__(self, namespace: str,
+                 vendor: str, version: str, image_base_path: str,
+                 client: AmpliPi):
+        self._current_source = None
+
+        self._unique_id = f"{namespace}_announcement"
+        self._vendor = vendor
+        self._version = version
+        self._enabled = True
+        self._client = client
+        self._last_update_successful = True
+        self._available = True
+        self._extra_attributes = []
+        self._image_base_path = image_base_path
+        self._name = "AmpliPi Announcement"
+        self._volume = 0.5
+
+    @property
+    def available(self):
+        return self._available
+    
+    @property
+    def supported_features(self):
+        self._attr_app_name = "AmpliPi Announcement Channel"
+        return SUPPORT_AMPLIPI_ANNOUNCE
+    
+    @property
+    def media_content_type(self):
+        """Content type of current playing media."""
+        return MEDIA_TYPE_MUSIC
+    
+    @property
+    def media_content_type(self):
+        """Content type of current playing media."""
+        return "speaker"
+    
+    @property
+    def entity_registry_enabled_default(self):
+        """Return if the entity should be enabled when first added to the entity registry."""
+        return True
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info for this device."""
+        model = "AmpliPi Announcement Channel"
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.unique_id)},
+            model=model,
+            name=self._name,
+            manufacturer=self._vendor,
+            sw_version=self._version,
+            configuration_url=self._image_base_path
+        )
+
+    @property
+    def volume_level(self):
+        return self._volume
+
+    @property
+    def unique_id(self):
+        """Return unique ID for this device."""
+        return self._unique_id
+
+    @property
+    def name(self):
+        """Return the name of the zone."""
+        if not self._available:
+            return "AmpliPi: " + self._name + " (Unavailable)"
+        return "AmpliPi: " + self._name
+
+    @property
+    def state(self):
+        return STATE_IDLE
+
+    async def async_browse_media(self, media_content_type=None, media_content_id=None):
+        """Implement the websocket media browsing helper."""
+        return await media_source.async_browse_media(
+            self.hass,
+            media_content_id,
+            content_filter=lambda item: item.media_content_type.startswith("audio/"),
+        )
+
+    async def async_play_media(self, media_type, media_id, **kwargs):
+        _LOGGER.warning(f'Play Media {media_type} {media_id} {kwargs}')
+        if media_source.is_media_source_id(media_id):
+            play_item = await media_source.async_resolve_media(self.hass, media_id)
+            media_id = play_item.url
+            _LOGGER.warning(f'Playing media source: {play_item} {media_id}')
+
+        media_id = async_process_play_media_url(self.hass, media_id)
+        await self._client.announce(
+            Announcement(
+                media=media_id,
+                vol_f=self._volume
+            )
+        )
+        pass
+
+
+    async def async_set_volume_level(self, volume):
+        if volume is None:
+            return
+        self._volume = volume
