@@ -6,7 +6,7 @@ from typing import List
 
 import validators
 from homeassistant.components import media_source
-from homeassistant.components.media_player import MediaPlayerEntity, SUPPORT_VOLUME_MUTE, \
+from homeassistant.components.media_player import MediaPlayerDeviceClass, MediaPlayerEntity, SUPPORT_VOLUME_MUTE, \
     SUPPORT_VOLUME_SET, SUPPORT_SELECT_SOURCE, SUPPORT_PLAY_MEDIA, SUPPORT_PLAY
 from homeassistant.components.media_player.browse_media import (
     async_process_play_media_url,
@@ -136,6 +136,7 @@ class AmpliPiSource(MediaPlayerEntity):
         self._client = client
         self._unique_id = f"{namespace}_source_{source.id}"
         self._last_update_successful = False
+        self._attr_device_class = MediaPlayerDeviceClass.SPEAKER
 
 
     async def async_mute_volume(self, mute):
@@ -570,6 +571,7 @@ class AmpliPiZone(MediaPlayerEntity):
         ]
         self._available = False
         self._extra_attributes = []
+        self._attr_device_class = MediaPlayerDeviceClass.SPEAKER
 
     async def async_mute_volume(self, mute):
         if mute is None:
@@ -669,8 +671,6 @@ class AmpliPiZone(MediaPlayerEntity):
     @property
     def name(self):
         """Return the name of the zone."""
-        if not self._available:
-            return "AmpliPi: " + self._name + " (Unavailable)"
         return "AmpliPi: " + self._name
 
     async def async_update(self):
@@ -969,6 +969,7 @@ class AmpliPiAnnouncer(MediaPlayerEntity):
         self._image_base_path = image_base_path
         self._name = "AmpliPi Announcement"
         self._volume = 0.5
+        self._attr_device_class = MediaPlayerDeviceClass.SPEAKER
 
     @property
     def available(self):
@@ -1020,8 +1021,6 @@ class AmpliPiAnnouncer(MediaPlayerEntity):
     @property
     def name(self):
         """Return the name of the zone."""
-        if not self._available:
-            return "AmpliPi: " + self._name + " (Unavailable)"
         return "AmpliPi: " + self._name
 
     @property
