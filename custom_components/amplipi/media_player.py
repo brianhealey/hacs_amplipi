@@ -7,7 +7,7 @@ from typing import List
 import validators
 from homeassistant.components import media_source
 from homeassistant.components.media_player import MediaPlayerDeviceClass, MediaPlayerEntity, SUPPORT_VOLUME_MUTE, \
-    SUPPORT_VOLUME_SET, SUPPORT_SELECT_SOURCE, SUPPORT_PLAY_MEDIA, SUPPORT_PLAY
+    SUPPORT_VOLUME_SET, SUPPORT_VOLUME_STEP, SUPPORT_SELECT_SOURCE, SUPPORT_PLAY_MEDIA, SUPPORT_PLAY
 from homeassistant.components.media_player.browse_media import (
     async_process_play_media_url,
 )
@@ -51,6 +51,7 @@ SUPPORT_AMPLIPI_ZONE = (
         SUPPORT_SELECT_SOURCE
         | SUPPORT_VOLUME_MUTE
         | SUPPORT_VOLUME_SET
+        | SUPPORT_VOLUME_STEP
         | SUPPORT_BROWSE_MEDIA
         | SUPPORT_PLAY_MEDIA
 )
@@ -176,6 +177,21 @@ class AmpliPiSource(MediaPlayerEntity):
                 )
             )
         )
+
+   async def async_volume_up(self) -> None:
+        if hasattr(self, "volume_up"):
+            await self.hass.async_add_executor_job(self.volume_up)
+            return
+        if self.volume_level is not None and self.volume_level < 1:
+            await self.async_set_volume_level(min(1, self.volume_level + 0.01))
+
+    async def async_volume_down(self) -> None:
+        if hasattr(self, "volume_down"):
+            await self.hass.async_add_executor_job(self.volume_down)
+            return
+        if self.volume_level is not None and self.volume_level > 0:
+            await self.async_set_volume_level(max(0, self.volume_level - 0.01))
+
 
     async def async_browse_media(self, media_content_type=None, media_content_id=None):
         """Implement the websocket media browsing helper."""
