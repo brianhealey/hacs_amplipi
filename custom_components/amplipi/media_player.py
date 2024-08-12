@@ -634,6 +634,23 @@ class AmpliPiZone(MediaPlayerEntity):
                 vol_f=volume
             ))
 
+
+    async def async_volume_up(self):
+        if hasattr(self, "volume_up"):
+            await self.hass.async_add_executor_job(self.volume_up)
+            return
+
+        if self.volume_level is not None and self.volume_level < 1:
+            await self.async_set_volume_level(min(1, self.volume_level + 0.01))
+
+    async def async_volume_down(self):
+        if hasattr(self, "volume_down"):
+            await self.hass.async_add_executor_job(self.volume_down)
+            return
+
+        if self.volume_level is not None and self.volume_level > 0:
+            await self.async_set_volume_level(max(0, self.volume_level - 0.01))
+
     @property
     def supported_features(self):
         """Return flag of media commands that are supported."""
