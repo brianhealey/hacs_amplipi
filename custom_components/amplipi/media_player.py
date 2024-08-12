@@ -160,7 +160,7 @@ class AmpliPiSource(MediaPlayerEntity):
         if volume is None:
             return
         _LOGGER.warning(f"setting volume to {volume}")
-
+        
         group = next(filter(lambda z: z.vol_f is not None, self._groups), None)
         zone = next(filter(lambda z: z.vol_f is not None, self._zones), None)
         if group is not None:
@@ -178,10 +178,12 @@ class AmpliPiSource(MediaPlayerEntity):
             )
         )
 
-   async def async_volume_up(self):
+
+    async def async_volume_up(self):
         if hasattr(self, "volume_up"):
             await self.hass.async_add_executor_job(self.volume_up)
             return
+
         if self.volume_level is not None and self.volume_level < 1:
             await self.async_set_volume_level(min(1, self.volume_level + 0.01))
 
@@ -189,6 +191,7 @@ class AmpliPiSource(MediaPlayerEntity):
         if hasattr(self, "volume_down"):
             await self.hass.async_add_executor_job(self.volume_down)
             return
+
         if self.volume_level is not None and self.volume_level > 0:
             await self.async_set_volume_level(max(0, self.volume_level - 0.01))
 
