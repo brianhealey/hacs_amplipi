@@ -832,15 +832,8 @@ class AmpliPiZone(MediaPlayerEntity):
         source_list = ['None']
         source_num = 1
         if self._sources is not None:
-            for source in self._sources:
-                additional_text = ""
-                if source.info is not None:
-                    if source.info.name is not None:
-                        additional_text += source.info.name
-                if additional_text == "":
-                    source_list.append("Source " + str(source_num))
-                else:
-                    source_list.append("Source " + str(source_num) + " - " + additional_text)
+            for _ in self._sources:
+                source_list.append("Source " + str(source_num))
                 source_num += 1
         return source_list
 
@@ -848,10 +841,7 @@ class AmpliPiZone(MediaPlayerEntity):
     def source(self):
         """Returns the current source playing, if this is wrong it won't show up as the selected source on HomeAssistant"""
         if self._current_source is not None:
-            if self._current_source.info is not None and self._current_source.info.name is not None:
-                return f'Source {self._current_source.id + 1} - {self._current_source.info.name}'
-            else:
-                return f'Source {self._current_source.id + 1}'
+            return f'Source {self._current_source.id + 1}'
         return None
 
     async def async_browse_media(self, media_content_type=None, media_content_id=None):
