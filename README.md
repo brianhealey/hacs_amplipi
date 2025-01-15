@@ -37,6 +37,9 @@ The AmpliPi Media Player entities support:
 - On
 - PA
 
+## Optional Setup
+This component has an optional companion component that can be found at https://github.com/micro-nova/AmpliPi-HomeAssistant-Card if you wish to use home assistant as a ui for your AmpliPi software that can be installed by following the same installation guide as this component but replacing the repository link with https://github.com/micro-nova/AmpliPi-HomeAssistant-Card and the type with "Dashboard"
+
 ## Credits
 
 Cursor graphics used in this document from [Freepik](https://www.freepik.com/).
