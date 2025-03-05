@@ -10,7 +10,7 @@ from homeassistant.components.media_player import MediaPlayerDeviceClass, MediaP
 from homeassistant.components.media_player.browse_media import (
     async_process_play_media_url,
 )
-from homeassistant.const import CONF_NAME, STATE_OFF, STATE_PLAYING, STATE_PAUSED, STATE_IDLE, STATE_UNKNOWN
+from homeassistant.const import CONF_NAME, STATE_PLAYING, STATE_PAUSED, STATE_IDLE, STATE_UNKNOWN
 from homeassistant.helpers.entity import DeviceInfo
 from pyamplipi.amplipi import AmpliPi
 from pyamplipi.models import ZoneUpdate, Source, SourceUpdate, GroupUpdate, Stream, Group, Zone, Announcement, \
@@ -42,6 +42,7 @@ SUPPORT_LOOKUP_DICT = {
     'stop': MediaPlayerEntityFeature.STOP,
     'next': MediaPlayerEntityFeature.NEXT_TRACK,
     'prev': MediaPlayerEntityFeature.PREVIOUS_TRACK,
+    'toggle': MediaPlayerEntityFeature.TURN_OFF,
 }
 
 _LOGGER = logging.getLogger(__name__)
@@ -127,6 +128,13 @@ class AmpliPiSource(MediaPlayerEntity):
         self._last_update_successful = False
         self._attr_device_class = MediaPlayerDeviceClass.SPEAKER
 
+
+    async def async_turn_off(self):
+        if self._source is not None:
+            _LOGGER.warning(f"disconnecting stream from source {self._name}")
+            await self._update_source(SourceUpdate(
+                input='None'
+            ))
 
     async def async_mute_volume(self, mute):
         if mute is None:
@@ -286,7 +294,6 @@ class AmpliPiSource(MediaPlayerEntity):
         """Return flag of media commands that are supported."""
 
         supported_features = SUPPORT_AMPLIPI_DAC
-
         if self._source is not None and self._source.info is not None and len(self._source.info.supported_cmds) > 0:
             supported_features = supported_features | reduce(
                 operator.or_,
@@ -411,9 +418,7 @@ class AmpliPiSource(MediaPlayerEntity):
         """Return the state of the zone."""
         if self._last_update_successful is False:
             return STATE_UNKNOWN
-        elif self._source is None:
-            return STATE_OFF
-        elif self._source.info is None or self._source.info.state is None:
+        elif self._source is None or self._source.info is None or self._source.info.state is None:
             return STATE_IDLE
         elif self._source.info.state in (
                 'paused'
@@ -526,24 +531,6 @@ class AmpliPiZone(MediaPlayerEntity):
             )
         #self.is_on = True
 
-    async def async_turn_off(self):
-        if self._is_group:
-            await self._update_group(
-                MultiZoneUpdate(
-                    groups=[self._group.id],
-                    update=ZoneUpdate(
-                        disabled=True,
-                    )
-                )
-            )
-        else:
-            await self._update_zone(
-                ZoneUpdate(
-                    disabled=True,
-                )
-            )
-        #self.is_on = False
-
     def __init__(self, namespace: str, zone, group,
                  streams: List[Stream], sources: List[Source],
                  vendor: str, version: str, image_base_path: str,
@@ -579,6 +566,24 @@ class AmpliPiZone(MediaPlayerEntity):
         self._available = False
         self._extra_attributes = []
         self._attr_device_class = MediaPlayerDeviceClass.SPEAKER
+
+    async def async_turn_off(self):
+        if self._current_source is not None:
+            if self._is_group:
+                _LOGGER.info(f"Disconnecting zones from source {self._current_source}")
+                await self._update_group(
+                    MultiZoneUpdate(
+                        groups=[self._group.id],
+                        update=ZoneUpdate(
+                            source_id=-1,
+                        )
+                    )
+                )
+            else:
+                _LOGGER.info(f"Disconnecting zone from source {self._current_source}")
+                await self._update_zone(ZoneUpdate(
+                    source_id=-1,
+                ))
 
     async def async_mute_volume(self, mute):
         if mute is None:
@@ -776,9 +781,7 @@ class AmpliPiZone(MediaPlayerEntity):
         """Return the state of the zone."""
         if self._last_update_successful is False:
             return STATE_UNKNOWN
-        elif self._current_source is None:
-            return STATE_OFF
-        elif self._current_source.info is None or self._current_source.info.state is None:
+        elif self._current_source is None or self._current_source == -1 or self._current_source.info is None or self._current_source.info.state is None:
             return STATE_IDLE
         elif self._current_source.info.state in (
                 'paused'
@@ -853,7 +856,7 @@ class AmpliPiZone(MediaPlayerEntity):
     @property
     def source_list(self):
         """List of available input sources."""
-        source_list = ['None']
+        source_list = []
         source_num = 1
         if self._sources is not None:
             for _ in self._sources:
@@ -865,6 +868,8 @@ class AmpliPiZone(MediaPlayerEntity):
     def source(self):
         """Returns the current source playing, if this is wrong it won't show up as the selected source on HomeAssistant"""
         if self._current_source is not None:
+            if self._current_source == "None":
+                return "None"
             return f'Source {self._current_source.id + 1}'
         return None
 
